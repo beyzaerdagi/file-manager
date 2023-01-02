@@ -13,298 +13,274 @@
 
 char file_list[10][100];
 char response[128];
-char c;
-int file_length = sizeof(file_list) / sizeof(file_list[0]);
-int count = 0;
+int clientCount = 0;
 pthread_t threads[4];
 pthread_mutex_t lock;
 pthread_cond_t cond;
 
-struct params
-{
+//keep client data
+struct params{
     char *arg1;
     char *arg2;
 };
 
-void *create(char *args);
-void *delete(char *args);
-void *myRead(char *args);
+void *createFile(char *args);
+void *deleteFile(char *args);
+void *readFile(char *args);
 void *writeFile(char *args);
-char **matrixGenerate(int row, int column);
-char **arraySplit(char *array);
+void str_sep(char *str, char **seperated);
 
 int main(){
 
-    char **myArray;
+    char *args[20];
     void *status;
     int fd;
     int returnResponse = 0;
     char *myfifo = "/tmp/myfifo";
     char buf[MAX_BUF];
-    memset(file_list, '\0', sizeof(file_list));
 
     pthread_mutex_init(&lock, NULL);
     pthread_cond_init(&cond, NULL);
 
-    while (1)
-    {
+    while (1){
+        //open pipe for read
         fd = open(myfifo, O_RDONLY);
         read(fd, buf, MAX_BUF);
-
-        myArray = arraySplit(buf);
+        //seperate input data
+        str_sep(buf, args);
+        //find args length
+        int len = 0;
+        for (int i = 0; args[i] != '\0'; i++){
+            len++;
+        }
 
         struct params params;
+        params.arg1 = args[1];
+        params.arg2 = args[2];
 
-        params.arg1 = myArray[1];
-        params.arg2 = myArray[2];
+        //if client terminal is open increase client counter
+        if (strcmp(args[0], "client_created") == 0){
+            
+            clientCount++;
+            printf("%s\n", args[0]);
 
-        if (strcmp(myArray[0], "init") == 0){
-            count++;
-            printf("%s\n", myArray[0]);
-            printf("%d\n", count);
-        }
-        else if (strcmp(myArray[0], "create") == 0)
-        {
-            pthread_create(&threads[0], NULL, create, &params);
+        }else if (strcmp(args[0], "create") == 0 && len == 2){
+            //create thread and assigned to the thread list
+            pthread_create(&threads[0], NULL, createFile, &params);
             returnResponse = 1;
-        }
-        else if (strcmp(myArray[0], "delete") == 0)
-        {
-            pthread_create(&threads[1], NULL, delete, &params);
+
+        }else if (strcmp(args[0], "delete") == 0 && len == 2){
+            
+            pthread_create(&threads[1], NULL, deleteFile, &params);
             returnResponse = 1;
-        }
-        else if (strcmp(myArray[0], "write") == 0)
-        {
+
+        }else if (strcmp(args[0], "write") == 0 && len == 3){
+            
             pthread_create(&threads[2], NULL, writeFile, &params);
             returnResponse = 1;
-        }
-        else if (strcmp(myArray[0], "read") == 0)
-        {
-            pthread_create(&threads[3], NULL, myRead, &params);
+
+        }else if (strcmp(args[0], "read") == 0 && len == 2){
+            
+            pthread_create(&threads[3], NULL, readFile, &params);
             returnResponse = 1;
-        }
-        else if (strcmp(myArray[0], "exit") == 0)
-        {
-            printf("komut algilandi exit\n");
-            strcpy(response, "Program has finished");
-            count--;
-            if(count==0){
+
+        }else if (strcmp(args[0], "exit") == 0 && len == 1){
+            
+            strcpy(response, "Program Has Finished...");
+            //if client terminal is close then decrease client counter
+            clientCount--;
+            //if client counter is 0 then close manager terminal and return response
+            if(clientCount == 0){
                 fd = open(myfifo, O_WRONLY);
                 write(fd, response, sizeof(response));
                 close(fd);
                 exit(0);
             } 
             returnResponse = 1;
-            printf("%d\n", count);
+
+        }else{
+            //if user enter wrong command print message
+            strcpy(response, "The Wrong Command Was Entered");
+            printf("Commands:\n");
+            printf("    create: create ex.txt\n");
+            printf("    write: write ex.txt hey\n");
+            printf("    read: read ex.txt\n");
+            printf("    delete: delete ex.txt\n");
+            printf("    exit: exit\n ");
+            returnResponse = 1;
         }
 
+        //join all threads
         for (int i = 0; i < 4; i++)
         {
             pthread_join(threads[i], &status);
         }
 
+        //if enter command send response to client
         if(returnResponse == 1){
             fd = open(myfifo, O_WRONLY);
             write(fd, response, sizeof(response));
             close(fd);
         }
-        
     }
     pthread_mutex_destroy(&lock);
     pthread_cond_destroy(&cond);
     exit(0);
 }
 
-void *create(char *args)
+void *createFile(char *args)
 {
     pthread_mutex_lock(&lock);
     struct params *params = args;
+    //the argument in params is assigned to the file name
     char *file_name = params->arg1;
-    printf("filename : %s\n", file_name);
 
-    int idx = -1;
-    for (int i = 0; i < file_length; i++)
-    {
-        if (file_list[i] != NULL)
-        {
-            if (strcmp(file_list[i], file_name) == 0)
-            {
-                idx = i;
+    int fileExist = -1;
+    for (int i = 0; i < 10; i++){
+        if (file_list[i] != NULL){
+            //if file name already exist then assign fileExist to i
+            if (strcmp(file_list[i], file_name) == 0){
+                fileExist = i;
             }
         }
     }
-    if (idx == -1)
-    {
+
+    //file does not exit then add file to file list
+    if (fileExist == -1){
         for (int i = 0; i < 10; i++)
         {
-            if (file_list[i][0] == '\0')
-            {
+            if (file_list[i][0] == '\0'){
                 strcpy(file_list[i], file_name);
                 FILE *file = fopen(file_name, "w");
                 fclose(file);
                 strcpy(response, "File Created");
-
                 break;
             }
         }
-    }
-    else
-    {
-        strcpy(response, "File zaten var.");
+    }else{
+        //if file exist then return just response
+        strcpy(response, "The File Already Exists");
     }
     pthread_mutex_unlock(&lock);
 }
 
-void *delete(char *args)
-{
+void *deleteFile(char *args){
 
     pthread_mutex_lock(&lock);
-
     struct params *params = args;
+    //the argument in params is assigned to the file name
     char *file_name = params->arg1;
-    printf("filename : %s", file_name);
 
-    int idx = -1;
-
-    for (int i = 0; i < file_length; i++)
-    {
-        if (file_list[i] != NULL)
-        {
-            if (strcmp(file_list[i], file_name) == 0)
-            {
-                idx = i;
-
+    int fileExist = -1;
+    for (int i = 0; i < 10; i++){
+        if (file_list[i] != NULL){
+            //if file name found then assign fileExist to i
+            if (strcmp(file_list[i], file_name) == 0){
+                fileExist = i;
                 break;
             }
         }
     }
 
-    if (idx != -1)
-    {
-
-        file_list[idx][0] = '\0';
+    if (fileExist != -1){
+        file_list[fileExist][0] = '\0';
+        //remove file from system
         remove(file_name);
-        strcpy(response, "File Deleted!");
-    }
-    else
-    {
-        strcpy(response, "Silinecek dosya bulunmadı.");
+        strcpy(response, "File Deleted");
+    }else{
+        strcpy(response, "No File To Delete Was Found");
     }
     pthread_mutex_unlock(&lock);
 }
 
-void *myRead(char *args)
-{
-    pthread_mutex_lock(&lock);
+void *readFile(char *args){
 
+    pthread_mutex_lock(&lock);
     struct params *params = args;
+    //the argument in params is assigned to the file name
     char *file_name = params->arg1;
-    printf("filename : %s", file_name);
-    int idx = -1;
-    for (int i = 0; i < file_length; i++)
-    {
-        if (file_list[i] != NULL)
-        {
-            if (strcmp(file_list[i], file_name) == 0)
-            {
-                idx = i;
+
+    int fileExist = -1;
+    for (int i = 0; i < 10; i++){
+        if (file_list[i] != NULL){
+            //if file name found then assign fileExist to i and break 
+            if (strcmp(file_list[i], file_name) == 0){
+                fileExist = i;
                 break;
             }
         }
     }
-
-    if (idx != -1)
+    if (fileExist != -1)
     {
+        //print the inside file to console
         FILE *fptr = fopen(file_name, "r");
-        while ((c = fgetc(fptr)) != EOF)
-        {
+        char c;
+        while ((c = fgetc(fptr)) != EOF){
             printf("%c", c);
         }
         fclose(fptr);
-
-        strcpy(response, "File Readed!");
+        strcpy(response, "File Readed");
     }
     else
     {
-        strcpy(response, "Okunacak Dosya Bulunamadı");
+        strcpy(response, "No File To Read Was Found");
     }
     pthread_mutex_unlock(&lock);
 }
 
-void *writeFile(char *args)
-{
+void *writeFile(char *args){
+
     pthread_mutex_lock(&lock);
     struct params *params = args;
+    //the argument in params is assigned to the file name
     char *file_name = params->arg1;
+    //the argument in params is assigned to the data
     char *data = params->arg2;
-    printf("filename : %s", file_name);
-    printf("data : %s", data);
+    printf("input data : %s\n", data);
 
-    int idx = -1;
+    int fileExist = -1;
+    for (int i = 0; i < 10; i++){
 
-    for (int i = 0; i < 10; i++)
-    {
-
-        if (file_list[i] != NULL)
-        {
-            if (strcmp(file_list[i], file_name) == 0)
-            {
-                idx = i;
+        if (file_list[i] != NULL){
+            //if file name found then assign fileExist to i and break
+            if (strcmp(file_list[i], file_name) == 0){
+                fileExist = i;
                 break;
             }
         }
     }
-    if (idx != -1)
-    {
+
+    if (fileExist != -1){
 
         FILE *file = fopen(file_name, "a+");
-        if (file == NULL)
-        {
+        if (file == NULL){
             perror("fopen failed");
-            // return;
         }
-
+        //write data to file
         fprintf(file, "%s\n", data);
 
-        if (fclose(file) == EOF)
-        {
+        if (fclose(file) == EOF){
             perror("fclose failed");
-            // return;
         }
-        strcpy(response, "File Writed!");
-    }
-    else
-    {
-        strcpy(response, "Yazılacak Dosya Bulunamadı");
+        strcpy(response, "Written To The File");
+    }else{
+        strcpy(response, "No File To Write Was Found");
     }
     pthread_mutex_unlock(&lock);
 }
 
-char **matrixGenerate(int row, int column)
-{
-    int i;
-    char **matrix = malloc(row * sizeof(int *));
-    for (i = 0; i < row; i++)
-    {
-        matrix[i] = malloc(column * sizeof(int));
-    }
-
-    return matrix;
-}
-
-char **arraySplit(char *array)
-{
+// the input line is seperated
+// and its elements is assigned to the array given as a parameter
+// the last element is NULL
+void str_sep(char *str, char **seperated){
 
     int i = 0;
-    char *p = strtok(array, " ");
-    char **arr;
-    arr = matrixGenerate(10, 10);
-    while (p != NULL)
+    char *token = strtok(str, " ");
+    while (token != NULL)
     {
-        *(arr + i) = p;
-        i++;
-        p = strtok(NULL, " ");
+        // printf("token %s ",token);
+        seperated[i++] = token;
+        token = strtok(NULL, " ");
     }
-
-    return arr;
+    seperated[i] = NULL;
 }
