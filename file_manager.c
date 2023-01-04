@@ -36,7 +36,7 @@ int main(){
     void *status;
     int fd;
     int returnResponse = 0;
-    char *myfifo = "/tmp/myfifo";
+    char *myfifo = "/tmp/file_manager_named_pipe";
     char buf[MAX_BUF];
 
     pthread_mutex_init(&lock, NULL);
