@@ -20,10 +20,10 @@ int findLength(char *data){
 
 main() {
     int fd;
-    int isExit = 1;
-    char *myfifo = "/tmp/myfifo";
+	int isExit = 1;
+	char *myfifo = "/tmp/file_manager_named_pipe";
 
-    mkfifo(myfifo, 0666);
+	mkfifo(myfifo, 0666);
     char response2[128];
     //if client terminal is open
     char client[128] = "client_created";
@@ -37,21 +37,21 @@ main() {
         //get input data from client
         fgets(data, 128, stdin);
         //delete space
-	if (data[findLength(data) - 1] == '\n'){
+		if (data[findLength(data) - 1] == '\n'){
             data[findLength(data) - 1] = '\0';
         }
         //send manager input data
         fd = open(myfifo, O_WRONLY);
         write(fd, data, sizeof(data));
-	close(fd);
+		close(fd);
         //if client enter exit, exit terminal
         if (strcmp(data, "exit") == 0){
-		isExit = 0;
-	}
+			isExit = 0;
+		}
         //print response from manager
-	fd = open(myfifo, O_RDONLY);
-	read(fd, response, 128);
-	printf("%s\n", response);
-   }
+		fd = open(myfifo, O_RDONLY);
+		read(fd, response, 128);
+		printf("%s\n", response);
+	}
 	return 0;
 }
