@@ -12,9 +12,9 @@
 #define MAX_BUF 128
 
 char file_list[10][100];
-char response[128];
+char response[MAX_BUF];
 int clientCount = 0;
-pthread_t threads[4];
+pthread_t threads[5];
 pthread_mutex_t lock;
 pthread_cond_t cond;
 
@@ -53,7 +53,6 @@ int main(){
         for (int i = 0; args[i] != '\0'; i++){
             len++;
         }
-
         struct params params;
         params.arg1 = args[1];
         params.arg2 = args[2];
@@ -111,7 +110,7 @@ int main(){
         }
 
         //join all threads
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
         {
             pthread_join(threads[i], &status);
         }
@@ -136,8 +135,10 @@ void *createFile(char *args)
     char *file_name = params->arg1;
 
     int fileExist = -1;
+    int idx = 0;
     for (int i = 0; i < 10; i++){
-        if (file_list[i] != NULL){
+        if (file_list[i][0] != NULL){
+            idx++;
             //if file name already exist then assign fileExist to i
             if (strcmp(file_list[i], file_name) == 0){
                 fileExist = i;
@@ -145,10 +146,13 @@ void *createFile(char *args)
         }
     }
 
-    //file does not exit then add file to file list
-    if (fileExist == -1){
-        for (int i = 0; i < 10; i++)
-        {
+    if (idx == 10 && fileExist == -1){
+        // if file exist then return just response
+        strcpy(response, "File List Is Full");
+    }else if (fileExist == -1)
+    {
+        //file does not exit then add file to file list
+        for (int i = 0; i < 10; i++) {
             if (file_list[i][0] == '\0'){
                 strcpy(file_list[i], file_name);
                 FILE *file = fopen(file_name, "w");
@@ -157,8 +161,10 @@ void *createFile(char *args)
                 break;
             }
         }
-    }else{
-        //if file exist then return just response
+    }
+    else
+    {
+        // if file exist then return just response
         strcpy(response, "The File Already Exists");
     }
     pthread_mutex_unlock(&lock);
@@ -199,7 +205,7 @@ void *readFile(char *args){
     struct params *params = args;
     //the argument in params is assigned to the file name
     char *file_name = params->arg1;
-
+    char readArr[MAX_BUF];
     int fileExist = -1;
     for (int i = 0; i < 10; i++){
         if (file_list[i] != NULL){
@@ -210,16 +216,20 @@ void *readFile(char *args){
             }
         }
     }
-    if (fileExist != -1)
-    {
+
+    if (fileExist != -1){
         //print the inside file to console
         FILE *fptr = fopen(file_name, "r");
         char c;
-        while ((c = fgetc(fptr)) != EOF){
-            printf("%c", c);
+        int idx = 0;
+        readArr[idx++] = '\n';
+        while ((c = fgetc(fptr)) != EOF)
+        {
+            readArr[idx++] = c;
         }
+        readArr[idx - 1] = '\0';
         fclose(fptr);
-        strcpy(response, "File Readed");
+        strcpy(response, readArr);
     }
     else
     {
